@@ -28,4 +28,14 @@ public class ConstantVariableFolding
         return x > y;
     }
 
+    public int optimiseMe() {
+        int a = 534245;
+        int b = a - 1234;
+        System.out.println((120298345-a)*38.435792873);
+        for (int i = 0; i < 10; i++){
+            System.out.println((b-a)*i);
+        }
+        return a*b;
+    }
+
 }

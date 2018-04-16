@@ -62,10 +62,10 @@ public class ConstantFolder {
 
 		InstructionList instruction_List = new InstructionList(methodCode.getCode());
 
-
 		//run till exhausted
-		while (optimiseArithmeticOperation(methodGen) | optimiseComparisons(instruction_List, cpgen)| optimiseArithmeticOperation(methodGen))
+		while (optimiseArithmeticOperation(methodGen) | optimiseComparisonOperations(methodGen) | optimiseLoad(methodGen) | optimiseStore(methodGen))
 			;
+
 
 		// setPositions(true) checks whether jump handles
 		// are all within the current method
@@ -101,17 +101,16 @@ public class ConstantFolder {
 	private boolean optimiseArithmeticOperation(MethodGen mg) {
 		InstructionList listOfinstructions = mg.getInstructionList();
 		ConstantPoolGen cpgen = mg.getConstantPool();
-		String loadInstructions = "(ConstantPushInstruction|LDC|LDC_W|LDC2_W)";// LoadInstruction   inlcude this for constantfolding and dynimic i think
+		String loadInstructions = "(ConstantPushInstruction|LDC|LDC_W|LDC2_W)";
 		String binaryOperator = "(DADD|DDIV|DMUL|DREM|DSUB|FADD|FDIV|FMUL|FREM|FSUB|IADD|IAND|IDIV|IMUL|IOR|IREM|ISHL|ISHR|ISUB|IUSHR|IXOR|LADD|LAND|LDIV|LMUL|LOR|LREM|LSHL|LSHR|LSUB|LUSHR|LXOR|DCMPG|DCMPL|FCMPG|FCMPL|LCMP)";
 		String unaryOperator = "(DNEG|FNEG|INEG|LNEG|I2B|I2C|I2D|I2F|I2L|I2S|F2D|F2I|F2L|D2F|D2I|D2L|L2D|L2F|L2I)";
-		String Exp = "(" + loadInstructions + " " + loadInstructions + " " + "ArithmeticInstruction" + ")|("
-				+ loadInstructions + " " + "ConversionInstruction" + ")";
+		String exp = "(" + loadInstructions + " " + loadInstructions + " " + binaryOperator + ")|("
+				+ loadInstructions + " " + unaryOperator + ")";
 		InstructionFinder f = new InstructionFinder(listOfinstructions);
 
 		boolean modified = false;
 		boolean conversion = false;
-//		String
-		for (Iterator e = f.search(Exp); e.hasNext(); ) { // Iterate through instructions to look for arithmetic optimisation
+		for (Iterator e = f.search(exp); e.hasNext(); ) { // Iterate through instructions to look for arithmetic optimisation
 			InstructionHandle[] match = (InstructionHandle[]) e.next();
 
 			InstructionHandle operationInstruction = match[match.length - 1];
@@ -120,7 +119,6 @@ public class ConstantFolder {
 			modified = true;
 			InstructionHandle leftInstruction = match[0];
 			InstructionHandle rightInstruction = match[1];
-
 
 			try {
 
@@ -164,16 +162,15 @@ public class ConstantFolder {
 				else if (operationInstruction.getInstruction() instanceof I2C) { foldOperation(cpgen,listOfinstructions,match, "convert to char"); }
 				else if (operationInstruction.getInstruction() instanceof DCMPG) {
 					foldOperation(leftInstruction, rightInstruction, operationInstruction, cpgen, listOfinstructions, match, "compare greater than doubles");
-				} else if (operationInstruction.getInstruction() instanceof DCMPL)
+				} else if (operationInstruction.getInstruction() instanceof DCMPL) {
 					foldOperation(leftInstruction, rightInstruction, operationInstruction, cpgen, listOfinstructions, match, "compare less than doubles");
-				else if (operationInstruction.getInstruction() instanceof FCMPG)
+				} else if (operationInstruction.getInstruction() instanceof FCMPG) {
 					foldOperation(leftInstruction, rightInstruction, operationInstruction, cpgen, listOfinstructions, match, "compare greater than floats");
-				else if (operationInstruction.getInstruction() instanceof FCMPL)
+				} else if (operationInstruction.getInstruction() instanceof FCMPL) {
 					foldOperation(leftInstruction, rightInstruction, operationInstruction, cpgen, listOfinstructions, match, "compare less than floats");
-				else if (operationInstruction.getInstruction() instanceof LCMP)
+				} else if (operationInstruction.getInstruction() instanceof LCMP) {
 					foldOperation(leftInstruction, rightInstruction, operationInstruction, cpgen, listOfinstructions, match, "compare longs");
-
-
+				}
 			} catch (ArithmeticException matherror) {
 				modified = false;
 			}
@@ -185,6 +182,52 @@ public class ConstantFolder {
 		return modified;
 	}
 
+	private boolean optimiseComparisonOperations(MethodGen mg) {
+		InstructionList listOfinstructions = mg.getInstructionList();
+		ConstantPoolGen cpgen = mg.getConstantPool();
+		String pushInstructions  = "(BIPUSH|ICONST|SIPUSH|LDC|LDC_W)";
+		String ifBinary = "(IF_ICMPEQ|IF_ICMPGT|IF_ICMPGE|IF_ICMPLT|IF_ICMPLE|IF_ICMPNE)";
+		String ifUnary  = "(IFEQ|IFGT|IFGE|IFLT|IFLE|IFNE)";
+		String exp  = "(" + "(" + pushInstructions + " " + ifUnary + ")" + "|" + "(" + pushInstructions + " " + pushInstructions + " " + ifBinary + ")" + ") ICONST GOTO ICONST Instruction";
+		InstructionFinder f = new InstructionFinder(listOfinstructions);
+
+		boolean modified = false;
+		boolean conversion = false;
+		for (Iterator e = f.search(exp); e.hasNext(); ) { // Iterate through instructions to look for comparison optimisation
+			InstructionHandle[] match = (InstructionHandle[]) e.next();
+			IfInstruction ifInstruction = (IfInstruction)match[match.length-5].getInstruction();
+
+			modified = true;
+			if (ifInstruction instanceof IF_ICMPEQ) {
+				foldBinaryComparison(cpgen, listOfinstructions, match, "IF_ICMPEQ");
+			} else if (ifInstruction instanceof IF_ICMPGT) {
+				foldBinaryComparison(cpgen, listOfinstructions, match, "IF_ICMPGT");
+			} else if (ifInstruction instanceof IF_ICMPGE) {
+				foldBinaryComparison(cpgen, listOfinstructions, match, "IF_ICMPGE");
+			} else if (ifInstruction instanceof IF_ICMPLT) {
+				foldBinaryComparison(cpgen, listOfinstructions, match, "IF_ICMPLT");
+			} else if (ifInstruction instanceof IF_ICMPLE) {
+				foldBinaryComparison(cpgen, listOfinstructions, match, "IF_ICMPLE");
+			} else if (ifInstruction instanceof IF_ICMPNE) {
+				foldBinaryComparison(cpgen, listOfinstructions, match, "IF_ICMPNE");
+			} else if (ifInstruction instanceof IFEQ) {
+				foldUnaryComparison(cpgen, listOfinstructions, match, "IFEQ");
+			} else if (ifInstruction instanceof IFGT) {
+				foldUnaryComparison(cpgen, listOfinstructions, match, "IFGT");
+			} else if (ifInstruction instanceof IFGE) {
+				foldUnaryComparison(cpgen, listOfinstructions, match, "IFGE");
+			} else if (ifInstruction instanceof IFLT) {
+				foldUnaryComparison(cpgen, listOfinstructions, match, "IFLT");
+			} else if (ifInstruction instanceof IFLE) {
+				foldUnaryComparison(cpgen, listOfinstructions, match, "IFLE");
+			} else if (ifInstruction instanceof IFNE) {
+				foldUnaryComparison(cpgen, listOfinstructions, match, "IFNE");
+			}
+		}
+
+		return modified;
+	}
+
 	private void updateLostTargets(InstructionHandle[] targets, InstructionHandle new_target) {
 		for (int i = 0; i < targets.length; i++) {
 			InstructionTargeter[] targeters = targets[i].getTargeters();
@@ -192,6 +235,60 @@ public class ConstantFolder {
 			for (int j = 0; j < targeters.length; j++)
 				targeters[j].updateTarget(targets[i], new_target);
 		}
+	}
+
+	private void foldUnaryComparison(ConstantPoolGen cpgen, InstructionList listOfInstructions, InstructionHandle[] match, String str) {
+		try {
+			int val = getConstantValue(match[0], cpgen).intValue();
+			if (!comparisonResult(str, val, 0)) {
+				match[match.length - 2].setInstruction(match[match.length - 4].getInstruction());
+			}
+			listOfInstructions.delete(match[0], match[match.length - 3]);
+		} catch (TargetLostException error) {
+			updateLostTargets(error.getTargets(), match[match.length-2]);
+		}
+	}
+
+	private void foldBinaryComparison(ConstantPoolGen cpgen, InstructionList listOfInstructions, InstructionHandle[] match, String str) {
+		try {
+			int val1 = getConstantValue(match[0], cpgen).intValue();
+			int val2 = getConstantValue(match[1], cpgen).intValue();
+			if (!comparisonResult(str, val1, val2)) {
+				match[match.length - 2].setInstruction(match[match.length - 4].getInstruction());
+			}
+			listOfInstructions.delete(match[0], match[match.length - 3]);
+		} catch (TargetLostException error) {
+			updateLostTargets(error.getTargets(), match[match.length-2]);
+		}
+	}
+
+	private boolean comparisonResult(String str, int val1, int val2) {
+		if (str.equals("IF_ICMPEQ")) {
+			return val1 == val2;
+		} else if (str.equals("IF_ICMPGT")) {
+			return val1 > val2;
+		} else if (str.equals("IF_ICMPGE")) {
+			return val1 >= val2;
+		} else if (str.equals("IF_ICMPLT")) {
+			return val1 < val2;
+		} else if (str.equals("IF_ICMPLE")) {
+			return val1 <= val2;
+		} else if (str.equals("IF_ICMPNE")) {
+			return val1 != val2;
+		} else if (str.equals("IFEQ")) {
+			return val1 == 0;
+		} else if (str.equals("IFGT")) {
+			return val1 > 0;
+		} else if (str.equals("IFGE")) {
+			return val1 >= 0;
+		} else if (str.equals("IFLT")) {
+			return val1 < 0;
+		} else if (str.equals("IFLE")) {
+			return val1 <= 0;
+		} else if (str.equals("IFNE")) {
+			return val1 != 0;
+		}
+		return true;
 	}
 
 	private void foldOperation(ConstantPoolGen cpgen, InstructionList listOfInstructions, InstructionHandle[] match, String str) {
@@ -241,17 +338,6 @@ public class ConstantFolder {
 		rightValue = getConstantValue(rightInstruction, cpgen);
 		leftValue = getConstantValue(leftInstruction, cpgen);
 
-//		if (leftInstruction.getInstruction() instanceof ILOAD) {     // include this to make dynamics work but constantfolding breaks if u include this , it wasnot really working before as well
-//
-//			leftValue = getLoadInstructionValue(leftInstruction, cpgen, listOfInstructions);
-//		} else {
-//			leftValue = getConstantValue(leftInstruction, cpgen);
-//		}
-//		if (rightInstruction.getInstruction() instanceof ILOAD) {
-//			rightValue = getLoadInstructionValue(rightInstruction, cpgen, listOfInstructions);
-//		} else {
-//			rightValue = getConstantValue(rightInstruction, cpgen);
-//		}
 
 		try {
 			if (str.equals("IADD")) {
@@ -383,64 +469,111 @@ public class ConstantFolder {
 		}
 	}
 
+	private boolean optimiseLoad(MethodGen methodGen) {
+		InstructionList listOfInstructions = methodGen.getInstructionList();
+		ConstantPoolGen cpgen = methodGen.getConstantPool();
+		String pushInstructions = "(ConstantPushInstruction|LDC|LDC_W|LDC2_W)";
+		String loadInstructions = "(ILOAD|DLOAD|FLOAD|LLOAD)";
+		String storeInstructions = "(ISTORE|DSTORE|FSTORE|LSTORE)";
+		String Exp = "(" + "(" + pushInstructions + " " + storeInstructions + ")|"
+				+ "IINC" + "|"
+				+ storeInstructions + ")|"
+				+ loadInstructions;
+		InstructionFinder f = new InstructionFinder(listOfInstructions);
+		boolean modified = false;
+		HashMap<Integer, Number> variables = new HashMap<>();
+
+		for (Iterator e = f.search(Exp); e.hasNext(); ) { // Iterate through instructions to look for store and load instructions
+			InstructionHandle[] match = (InstructionHandle[]) e.next();
+
+			InstructionHandle instructionHandle = match[0];
+			if (instructionHandle.getInstruction() instanceof LoadInstruction) {
+				LoadInstruction instruction = (LoadInstruction) instructionHandle.getInstruction();
+				Number val = variables.get(instruction.getIndex());
+				if (val != null) {
+					if (!checkForLoop(instructionHandle, listOfInstructions) && !checkIfCondition(instructionHandle, listOfInstructions)) {
+						instructionHandle.setInstruction((new PUSH(cpgen, val)).getInstruction());
+						modified = true;
+					}
+				}
+			}
+			else if(instructionHandle.getInstruction() instanceof StoreInstruction) {
+				StoreInstruction instruction = (StoreInstruction)instructionHandle.getInstruction();
+				variables.put(instruction.getIndex(), null);
+			}
+			else if (instructionHandle.getInstruction() instanceof IINC) {
+				IINC instruction = (IINC)instructionHandle.getInstruction();
+				if(variables.get(instruction.getIndex()) != null) {
+					int val = variables.get(instruction.getIndex()).intValue() + instruction.getIncrement();
+					if(!checkForLoop(instructionHandle, listOfInstructions) && !checkIfCondition(instructionHandle, listOfInstructions)) {
+						variables.put(instruction.getIndex(), val);
+					}
+					else {
+						variables.put(instruction.getIndex(), null);
+					}
+				}
+			}
+			else {
+				Number val = getConstantValue(instructionHandle, cpgen);
+				StoreInstruction instruction = (StoreInstruction)match[1].getInstruction();
+				if(!checkForLoop(match[1], listOfInstructions) && !checkIfCondition(match[1], listOfInstructions)) {
+					variables.put(instruction.getIndex(), val);
+				}
+				else {
+					variables.put(instruction.getIndex(), null);
+				}
+			}
+		}
+		return modified;
+	}
+
+	private boolean optimiseStore(MethodGen methodGen) {
+		InstructionList listOfInstructions = methodGen.getInstructionList();
+		ConstantPoolGen cpgen = methodGen.getConstantPool();
+		String pushInstructions = "(ConstantPushInstruction|LDC|LDC_W|LDC2_W)";
+		String loadInstructions = "(ILOAD|DLOAD|FLOAD|LLOAD)";
+		String storeInstructions = "(ISTORE|DSTORE|FSTORE|LSTORE)";
+		String exp = "(" + pushInstructions + " " + storeInstructions + ")|"
+				+ "IINC";
+		InstructionFinder f = new InstructionFinder(listOfInstructions);
+		boolean modified = false;
+
+		for (Iterator e = f.search(exp); e.hasNext(); ) { // Iterate through instructions to look for store and load instructions
+			InstructionHandle[] match = (InstructionHandle[]) e.next();
+			LocalVariableInstruction instruction = (LocalVariableInstruction)match[match.length - 1].getInstruction();
+
+			boolean unused = true;
+			for(Iterator e2 = f.search(loadInstructions); e2.hasNext(); ) {
+				InstructionHandle[] m = (InstructionHandle[]) e2.next();
+				if(((LoadInstruction)m[0].getInstruction()).getIndex() == instruction.getIndex()) {
+					unused = false;
+				}
+			}
+			if(unused) {
+				InstructionHandle nextHandle = match[match.length-1].getNext();
+				try {
+					modified = true;
+					//deletes store operations of unused variables
+					listOfInstructions.delete(match[0], match[match.length - 1]);
+				} catch (TargetLostException error) {
+					updateLostTargets(error.getTargets(), nextHandle);
+				}
+			}
+		}
+		return modified;
+	}
 
 	private Number getConstantValue(InstructionHandle h, ConstantPoolGen cpgen) {
-		if ((h.getInstruction() instanceof LDC) || (h.getInstruction() instanceof LDC_W)) {
-			return (Number) (((LDC) h.getInstruction()).getValue(cpgen));
+		if (h.getInstruction() instanceof LDC) {
+			return (Number)(((LDC) h.getInstruction()).getValue(cpgen));
+		} else if (h.getInstruction() instanceof LDC_W){
+			return (Number)(((LDC_W) h.getInstruction()).getValue(cpgen));
 		} else if (h.getInstruction() instanceof LDC2_W) {
-			return (((LDC2_W) h.getInstruction()).getValue(cpgen));
+			return (Number)(((LDC2_W) h.getInstruction()).getValue(cpgen));
 		} else if (h.getInstruction() instanceof ConstantPushInstruction) {
 			return (((ConstantPushInstruction) h.getInstruction()).getValue());
 		}
 		return null;
-	}
-
-	public Number getLoadInstructionValue(InstructionHandle h, ConstantPoolGen cpgen, InstructionList list) throws RuntimeException {
-		Instruction instruction = h.getInstruction();
-		if (!(instruction instanceof LoadInstruction)) {
-			throw new RuntimeException("InstructionHandle has to be of type LoadInstruction");
-		}
-
-		int localVariableIndex = ((LocalVariableInstruction) instruction).getIndex();
-
-		InstructionHandle handleIterator = h;
-		int incrementAccumulator = 0;
-		while (!(instruction instanceof StoreInstruction) || ((StoreInstruction) instruction).getIndex() != localVariableIndex) {
-
-			//If there is an IINC while scanning, we need to accumulate that on top of the ISTORE value
-			if (instruction instanceof IINC) {
-				IINC increment = (IINC) instruction;
-
-				if (increment.getIndex() == localVariableIndex) {
-					System.out.println("Found increment instruction");
-
-					//If it's in a for loop, we cannot get the value
-					if (checkForLoop(h, list) || checkIfCondition(h, list)) {
-						throw new RuntimeException("IINC in for loop");
-					}
-
-					System.out.format("%s | Incrementing by %d | Index: %d\n\n", increment, increment.getIncrement(), increment.getIndex());
-					incrementAccumulator += increment.getIncrement();
-				}
-			}
-
-			handleIterator = handleIterator.getPrev();
-			instruction = handleIterator.getInstruction();
-		}
-
-		//Go back previous one more additional time to fetch constant push instruction
-		handleIterator = handleIterator.getPrev();
-		instruction = handleIterator.getInstruction();
-
-		Number storeValue = null;
-		if (instruction instanceof ConstantPushInstruction) {
-			storeValue = ((ConstantPushInstruction) instruction).getValue();
-		} else if (instruction instanceof LDC) {
-			storeValue = (Number) ((LDC) instruction).getValue(cpgen);
-		} else if (instruction instanceof LDC2_W) {
-			storeValue = ((LDC2_W) instruction).getValue(cpgen);
-		}
-		return storeValue;
 	}
 
 	public boolean checkIfCondition(InstructionHandle h, InstructionList list) {
@@ -451,7 +584,7 @@ public class ConstantFolder {
 			try {
 				handleIterator = handleIterator.getPrev();
 				currentInstruction = handleIterator.getInstruction();
-				if (currentInstruction instanceof StoreInstruction
+				if (currentInstruction instanceof StoreInstruction && checkingInstruction instanceof LoadInstruction
 						&& ((StoreInstruction) currentInstruction).getIndex() == ((LoadInstruction) checkingInstruction).getIndex()) {
 					InstructionHandle subIterator = handleIterator;
 					while (subIterator != null) {
@@ -494,7 +627,7 @@ public class ConstantFolder {
 					while (subIterator != null) {
 						subIterator = subIterator.getPrev();
 						currentSubInstruction = subIterator.getInstruction();
-						if (currentSubInstruction instanceof StoreInstruction) {
+						if (currentSubInstruction instanceof StoreInstruction && checkingInstruction instanceof LoadInstruction) {
 							if (((StoreInstruction) currentSubInstruction).getIndex() == ((LoadInstruction) checkingInstruction).getIndex()) {
 								return true;
 							}
@@ -512,11 +645,4 @@ public class ConstantFolder {
 
 		return false;
 	}
-
-	private boolean optimiseComparisons(InstructionList listOfinstructions, ConstantPoolGen cpgen) {
-
-
-		return false;
-	}
-
 }

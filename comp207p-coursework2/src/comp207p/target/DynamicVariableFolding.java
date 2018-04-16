@@ -35,12 +35,4 @@ public class DynamicVariableFolding {
         b = a + 2;
         return a * b;
     }
-
-    public int optimiseMe() {
-        int a = 123456789;
-        System.out.println((120298345-a)*38.435792873);
-        System.out.println((120298345/a)+99.8398761);
-        a = 987654321;
-        return a*a;
-    }
 }

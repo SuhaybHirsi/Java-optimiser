@@ -5,8 +5,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.HashMap;
-import java.util.function.BinaryOperator;
-import java.util.function.UnaryOperator;
 
 import org.apache.bcel.classfile.ClassParser;
 import org.apache.bcel.classfile.Code;
@@ -14,8 +12,6 @@ import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.util.InstructionFinder;
 import org.apache.bcel.generic.*;
-import org.apache.bcel.util.InstructionFinder;
-import org.apache.bcel.util.InstructionFinder.CodeConstraint;
 
 
 public class ConstantFolder {
@@ -41,7 +37,7 @@ public class ConstantFolder {
 		// Implement your optimization here
 		for (int i = 0; i < methods.length; i++) {
 			if (!(methods[i].isAbstract() || methods[i].isNative())) {
-				// Initialise a method generator with the original method as the baseline
+
 				MethodGen methodGen = new MethodGen(methods[i], original.getClassName(), cpgen);
 				optimiseMethod(gen, cpgen, methods[i], methodGen);
 				methods[i] = methodGen.getMethod();
@@ -57,29 +53,26 @@ public class ConstantFolder {
 
 	private void optimiseMethod(ClassGen cgen, ConstantPoolGen cpgen, Method method, MethodGen methodGen) {
 
-		Code methodCode = method.getCode(); // get code method code should be bytecode
+		Code methodCode = method.getCode(); // bytecode from here
 
 
 		InstructionList instruction_List = new InstructionList(methodCode.getCode());
 
 		//run till exhausted
-		while (optimiseArithmeticOperation(methodGen) | optimiseComparisonOperations(methodGen) | optimiseLoad(methodGen) | optimiseStore(methodGen))
-			;
+		while (optimiseArithmeticOperation(methodGen) | optimiseComparisonOperations(methodGen) | optimiseLoad(methodGen));
 
 
-		// setPositions(true) checks whether jump handles
-		// are all within the current method
+
 		instruction_List.setPositions(true);
 
-		// set max stack/local
+
 		methodGen.setMaxStack();
 		methodGen.setMaxLocals();
 
-		// generate the new method with optimised instructions
-		Method newMethod = methodGen.getMethod();
+		// create a new optimise method
+		Method methodNew = methodGen.getMethod();
 
-		// replace the method in the original class
-		cgen.replaceMethod(method, newMethod);
+		cgen.replaceMethod(method, methodNew);
 	}
 
 	public void write(String optimisedFilePath) {
@@ -102,15 +95,15 @@ public class ConstantFolder {
 		InstructionList listOfinstructions = mg.getInstructionList();
 		ConstantPoolGen cpgen = mg.getConstantPool();
 		String loadInstructions = "(ConstantPushInstruction|LDC|LDC_W|LDC2_W)";
-		String binaryOperator = "(DADD|DDIV|DMUL|DREM|DSUB|FADD|FDIV|FMUL|FREM|FSUB|IADD|IAND|IDIV|IMUL|IOR|IREM|ISHL|ISHR|ISUB|IUSHR|IXOR|LADD|LAND|LDIV|LMUL|LOR|LREM|LSHL|LSHR|LSUB|LUSHR|LXOR|DCMPG|DCMPL|FCMPG|FCMPL|LCMP)";
-		String unaryOperator = "(DNEG|FNEG|INEG|LNEG|I2B|I2C|I2D|I2F|I2L|I2S|F2D|F2I|F2L|D2F|D2I|D2L|L2D|L2F|L2I)";
-		String exp = "(" + loadInstructions + " " + loadInstructions + " " + binaryOperator + ")|("
-				+ loadInstructions + " " + unaryOperator + ")";
-		InstructionFinder f = new InstructionFinder(listOfinstructions);
+		String binaryOp = "(DADD|DDIV|DMUL|DREM|DSUB|FADD|FDIV|FMUL|FREM|FSUB|IADD|IAND|IDIV|IMUL|IOR|IREM|ISHL|ISHR|ISUB|IUSHR|IXOR|LADD|LAND|LDIV|LMUL|LOR|LREM|LSHL|LSHR|LSUB|LUSHR|LXOR|DCMPG|DCMPL|FCMPG|FCMPL|LCMP)";
+		String unOp = "(DNEG|FNEG|INEG|LNEG|I2B|I2C|I2D|I2F|I2L|I2S|F2D|F2I|F2L|D2F|D2I|D2L|L2D|L2F|L2I)";
+		String exp = "(" + loadInstructions + " " + loadInstructions + " " + binaryOp + ")|("
+				+ loadInstructions + " " + unOp + ")";
+		InstructionFinder f_search = new InstructionFinder(listOfinstructions);
 
 		boolean modified = false;
 		boolean conversion = false;
-		for (Iterator e = f.search(exp); e.hasNext(); ) { // Iterate through instructions to look for arithmetic optimisation
+		for (Iterator e = f_search.search(exp); e.hasNext(); ) { // Iterate through instructions to look for arithmetic optimisation
 			InstructionHandle[] match = (InstructionHandle[]) e.next();
 
 			InstructionHandle operationInstruction = match[match.length - 1];
@@ -185,15 +178,15 @@ public class ConstantFolder {
 	private boolean optimiseComparisonOperations(MethodGen mg) {
 		InstructionList listOfinstructions = mg.getInstructionList();
 		ConstantPoolGen cpgen = mg.getConstantPool();
-		String pushInstructions  = "(BIPUSH|ICONST|SIPUSH|LDC|LDC_W)";
+		String loadInstruction  = "(BIPUSH|ICONST|SIPUSH|LDC|LDC_W)";
 		String ifBinary = "(IF_ICMPEQ|IF_ICMPGT|IF_ICMPGE|IF_ICMPLT|IF_ICMPLE|IF_ICMPNE)";
 		String ifUnary  = "(IFEQ|IFGT|IFGE|IFLT|IFLE|IFNE)";
-		String exp  = "(" + "(" + pushInstructions + " " + ifUnary + ")" + "|" + "(" + pushInstructions + " " + pushInstructions + " " + ifBinary + ")" + ") ICONST GOTO ICONST Instruction";
-		InstructionFinder f = new InstructionFinder(listOfinstructions);
+		String exp  = "(" + "(" + loadInstruction + " " + ifUnary + ")" + "|" + "(" + loadInstruction + " " + loadInstruction + " " + ifBinary + ")" + ") ICONST GOTO ICONST Instruction";
+		InstructionFinder f_search = new InstructionFinder(listOfinstructions);
 
 		boolean modified = false;
 		boolean conversion = false;
-		for (Iterator e = f.search(exp); e.hasNext(); ) { // Iterate through instructions to look for comparison optimisation
+		for (Iterator e = f_search.search(exp); e.hasNext(); ) { // Iterate through instructions to look for comparison optimisation
 			InstructionHandle[] match = (InstructionHandle[]) e.next();
 			IfInstruction ifInstruction = (IfInstruction)match[match.length-5].getInstruction();
 
@@ -228,7 +221,7 @@ public class ConstantFolder {
 		return modified;
 	}
 
-	private void updateLostTargets(InstructionHandle[] targets, InstructionHandle new_target) {
+	private void updateTargets(InstructionHandle[] targets, InstructionHandle new_target) {
 		for (int i = 0; i < targets.length; i++) {
 			InstructionTargeter[] targeters = targets[i].getTargeters();
 
@@ -245,7 +238,7 @@ public class ConstantFolder {
 			}
 			listOfInstructions.delete(match[0], match[match.length - 3]);
 		} catch (TargetLostException error) {
-			updateLostTargets(error.getTargets(), match[match.length-2]);
+			updateTargets(error.getTargets(), match[match.length-2]);
 		}
 	}
 
@@ -258,7 +251,7 @@ public class ConstantFolder {
 			}
 			listOfInstructions.delete(match[0], match[match.length - 3]);
 		} catch (TargetLostException error) {
-			updateLostTargets(error.getTargets(), match[match.length-2]);
+			updateTargets(error.getTargets(), match[match.length-2]);
 		}
 	}
 
@@ -325,7 +318,7 @@ public class ConstantFolder {
 			}
 
 		} catch (TargetLostException ex) {
-			updateLostTargets(ex.getTargets(), newInstruction);
+			updateTargets(ex.getTargets(), newInstruction);
 		}
 
 	}
@@ -343,121 +336,121 @@ public class ConstantFolder {
 			if (str.equals("IADD")) {
 
 				Number sum = leftValue.intValue() + rightValue.intValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("LADD")) {
+			else if (str.equals("LADD")) {
 				Number sum = leftValue.longValue() + rightValue.longValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("FADD")) {
+			else if (str.equals("FADD")) {
 				Number sum = leftValue.floatValue() + rightValue.floatValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 			}
-			if (str.equals("DADD")) {
+			else if (str.equals("DADD")) {
 				Number sum = leftValue.doubleValue() + rightValue.doubleValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("IMUL")) {
+			else if (str.equals("IMUL")) {
 				Number sum = leftValue.intValue() * rightValue.intValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("LMUL")) {
+			else if (str.equals("LMUL")) {
 				Number sum = leftValue.longValue() * rightValue.longValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("FMUL")) {
+			else if (str.equals("FMUL")) {
 				Number sum = leftValue.floatValue() * rightValue.floatValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("DMUL")) {
+			else if (str.equals("DMUL")) {
 				Number sum = leftValue.doubleValue() * rightValue.doubleValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("ISUB")) {
+			else if (str.equals("ISUB")) {
 				Number sum = leftValue.intValue() - rightValue.intValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("LSUB")) {
+			else if (str.equals("LSUB")) {
 				Number sum = leftValue.longValue() - rightValue.longValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("FSUB")) {
+			else if (str.equals("FSUB")) {
 				Number sum = leftValue.floatValue() - rightValue.floatValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("DSUB")) {
+			else if (str.equals("DSUB")) {
 				Number sum = leftValue.doubleValue() - rightValue.doubleValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("IDIV")) {
+			else if (str.equals("IDIV")) {
 				Number sum = leftValue.intValue() / rightValue.intValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("LDIV")) {
+			else if (str.equals("LDIV")) {
 				Number sum = leftValue.longValue() / rightValue.longValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("FDIV")) {
+			else if (str.equals("FDIV")) {
 				Number sum = leftValue.floatValue() / rightValue.floatValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
-			if (str.equals("DDIV")) {
+			else if (str.equals("DDIV")) {
 				Number sum = leftValue.doubleValue() / rightValue.doubleValue();
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, sum));
+				listOfInstructions.append(match[2], new PUSH(cpgen, sum));
 				listOfInstructions.delete(match[0], match[2]);
 
 			} else if (str.equals("compare greater than doubles")) {
 				int value = leftValue.doubleValue() > rightValue.doubleValue() ? 1 : -1;
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, value));
+				listOfInstructions.append(match[2], new PUSH(cpgen, value));
 				listOfInstructions.delete(match[0], match[2]);
 
 			} else if (str.equals("compare less than doubles")) {
 				int value = leftValue.doubleValue() < rightValue.doubleValue() ? -1 : 1;
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, value));
+				listOfInstructions.append(match[2], new PUSH(cpgen, value));
 				listOfInstructions.delete(match[0], match[2]);
 
 			} else if (str.equals("compare greater than floats")) {
 				int value = leftValue.floatValue() > rightValue.floatValue() ? 1 : -1;
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, value));
+				listOfInstructions.append(match[2], new PUSH(cpgen, value));
 				listOfInstructions.delete(match[0], match[2]);
 
 			} else if (str.equals("compare less than floats")) {
 				int value = leftValue.floatValue() < rightValue.floatValue() ? -1 : 1;
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, value));
+				listOfInstructions.append(match[2], new PUSH(cpgen, value));
 				listOfInstructions.delete(match[0], match[2]);
 
 			} else if (str.equals("compare longs")) {
 				int value = leftValue.longValue() > rightValue.longValue() ? 1 : (leftValue.longValue() == rightValue.longValue() ? 0 : -1);
-				newIns = listOfInstructions.append(match[2], new PUSH(cpgen, value));
+				listOfInstructions.append(match[2], new PUSH(cpgen, value));
 				listOfInstructions.delete(match[0], match[2]);
 
 			}
@@ -465,7 +458,7 @@ public class ConstantFolder {
 
 		} catch (ArithmeticException ex1) {
 		} catch (TargetLostException error) {
-			updateLostTargets(error.getTargets(), newIns);
+			updateTargets(error.getTargets(), newIns);
 		}
 	}
 
@@ -491,7 +484,7 @@ public class ConstantFolder {
 				LoadInstruction instruction = (LoadInstruction) instructionHandle.getInstruction();
 				Number val = variables.get(instruction.getIndex());
 				if (val != null) {
-					if (!checkForLoop(instructionHandle, listOfInstructions) && !checkIfCondition(instructionHandle, listOfInstructions)) {
+					if (!forLoop(instructionHandle, listOfInstructions) && !ifCondition(instructionHandle, listOfInstructions)) {
 						instructionHandle.setInstruction((new PUSH(cpgen, val)).getInstruction());
 						modified = true;
 					}
@@ -505,7 +498,7 @@ public class ConstantFolder {
 				IINC instruction = (IINC)instructionHandle.getInstruction();
 				if(variables.get(instruction.getIndex()) != null) {
 					int val = variables.get(instruction.getIndex()).intValue() + instruction.getIncrement();
-					if(!checkForLoop(instructionHandle, listOfInstructions) && !checkIfCondition(instructionHandle, listOfInstructions)) {
+					if(!forLoop(instructionHandle, listOfInstructions) && !ifCondition(instructionHandle, listOfInstructions)) {
 						variables.put(instruction.getIndex(), val);
 					}
 					else {
@@ -516,7 +509,7 @@ public class ConstantFolder {
 			else {
 				Number val = getConstantValue(instructionHandle, cpgen);
 				StoreInstruction instruction = (StoreInstruction)match[1].getInstruction();
-				if(!checkForLoop(match[1], listOfInstructions) && !checkIfCondition(match[1], listOfInstructions)) {
+				if(!forLoop(match[1], listOfInstructions) && !ifCondition(match[1], listOfInstructions)) {
 					variables.put(instruction.getIndex(), val);
 				}
 				else {
@@ -527,41 +520,7 @@ public class ConstantFolder {
 		return modified;
 	}
 
-	private boolean optimiseStore(MethodGen methodGen) {
-		InstructionList listOfInstructions = methodGen.getInstructionList();
-		ConstantPoolGen cpgen = methodGen.getConstantPool();
-		String pushInstructions = "(ConstantPushInstruction|LDC|LDC_W|LDC2_W)";
-		String loadInstructions = "(ILOAD|DLOAD|FLOAD|LLOAD)";
-		String storeInstructions = "(ISTORE|DSTORE|FSTORE|LSTORE)";
-		String exp = "(" + pushInstructions + " " + storeInstructions + ")|"
-				+ "IINC";
-		InstructionFinder f = new InstructionFinder(listOfInstructions);
-		boolean modified = false;
 
-		for (Iterator e = f.search(exp); e.hasNext(); ) { // Iterate through instructions to look for store and load instructions
-			InstructionHandle[] match = (InstructionHandle[]) e.next();
-			LocalVariableInstruction instruction = (LocalVariableInstruction)match[match.length - 1].getInstruction();
-
-			boolean unused = true;
-			for(Iterator e2 = f.search(loadInstructions); e2.hasNext(); ) {
-				InstructionHandle[] m = (InstructionHandle[]) e2.next();
-				if(((LoadInstruction)m[0].getInstruction()).getIndex() == instruction.getIndex()) {
-					unused = false;
-				}
-			}
-			if(unused) {
-				InstructionHandle nextHandle = match[match.length-1].getNext();
-				try {
-					modified = true;
-					//deletes store operations of unused variables
-					listOfInstructions.delete(match[0], match[match.length - 1]);
-				} catch (TargetLostException error) {
-					updateLostTargets(error.getTargets(), nextHandle);
-				}
-			}
-		}
-		return modified;
-	}
 
 	private Number getConstantValue(InstructionHandle h, ConstantPoolGen cpgen) {
 		if (h.getInstruction() instanceof LDC) {
@@ -569,32 +528,32 @@ public class ConstantFolder {
 		} else if (h.getInstruction() instanceof LDC_W){
 			return (Number)(((LDC_W) h.getInstruction()).getValue(cpgen));
 		} else if (h.getInstruction() instanceof LDC2_W) {
-			return (Number)(((LDC2_W) h.getInstruction()).getValue(cpgen));
+			return (((LDC2_W) h.getInstruction()).getValue(cpgen));
 		} else if (h.getInstruction() instanceof ConstantPushInstruction) {
 			return (((ConstantPushInstruction) h.getInstruction()).getValue());
 		}
 		return null;
 	}
 
-	public boolean checkIfCondition(InstructionHandle h, InstructionList list) {
-		Instruction checkingInstruction = h.getInstruction();
-		Instruction currentInstruction, currentSubInstruction;
-		InstructionHandle handleIterator = h;
+	public boolean ifCondition(InstructionHandle handler, InstructionList list) {
+		Instruction checkInstruction = handler.getInstruction();
+		Instruction cInst, cSubInst;
+		InstructionHandle handleIterator = handler;
+		boolean if_condition=false;
 		while (handleIterator != null) {
 			try {
 				handleIterator = handleIterator.getPrev();
-				currentInstruction = handleIterator.getInstruction();
-				if (currentInstruction instanceof StoreInstruction && checkingInstruction instanceof LoadInstruction
-						&& ((StoreInstruction) currentInstruction).getIndex() == ((LoadInstruction) checkingInstruction).getIndex()) {
+				cInst = handleIterator.getInstruction();
+				if (checkInstruction instanceof LoadInstruction && cInst instanceof StoreInstruction && ((StoreInstruction) cInst).getIndex() == ((LoadInstruction) checkInstruction).getIndex()) {
 					InstructionHandle subIterator = handleIterator;
 					while (subIterator != null) {
 						subIterator = subIterator.getPrev();
-						currentSubInstruction = subIterator.getInstruction();
-						if (currentSubInstruction instanceof BranchInstruction) {
-							if (((BranchInstruction) currentSubInstruction).getTarget().getPosition() > handleIterator.getPosition()) {
-								return true;
+						cSubInst = subIterator.getInstruction();
+						if (cSubInst instanceof BranchInstruction) {
+							if (((BranchInstruction) cSubInst).getTarget().getPosition() > handleIterator.getPosition()) {
+								return (if_condition=true);
 							} else {
-								return false;
+								return (if_condition=false);
 							}
 						}
 					}
@@ -604,35 +563,33 @@ public class ConstantFolder {
 			}
 		}
 
-		return false;
+		return if_condition;
 	}
 
-	public static boolean checkForLoop(InstructionHandle h, InstructionList list) {
-		Instruction checkingInstruction = h.getInstruction();
-		Instruction currentInstruction, previousInstruction, currentSubInstruction;
+	public boolean forLoop(InstructionHandle handler, InstructionList list) {
+		Instruction checkInstruction = handler.getInstruction();
+		Instruction cInst, preInst, cSubInst;
 		InstructionHandle handleIterator = list.getStart();
+		boolean inloop=false;
 		while (handleIterator != null) {
 			try {
 				handleIterator = handleIterator.getNext();
-				currentInstruction = handleIterator.getInstruction();
-				previousInstruction = handleIterator.getPrev().getInstruction();
-				if (currentInstruction instanceof GotoInstruction
-						&& (previousInstruction instanceof IINC
-						|| previousInstruction instanceof StoreInstruction)
-						&& (handleIterator.getPosition() > ((BranchInstruction) currentInstruction).getTarget().getPosition())) {
-					if (((BranchInstruction) currentInstruction).getTarget().getInstruction().equals(checkingInstruction)) {
-						return true;
+				cInst = handleIterator.getInstruction();
+				preInst = handleIterator.getPrev().getInstruction();
+				if ((preInst instanceof IINC || preInst instanceof StoreInstruction) && cInst instanceof GotoInstruction && (handleIterator.getPosition() > ((BranchInstruction) cInst).getTarget().getPosition())) {
+					if (((BranchInstruction) cInst).getTarget().getInstruction().equals(checkInstruction)) {
+						return (inloop=true);
 					}
 					InstructionHandle subIterator = handleIterator;
 					while (subIterator != null) {
 						subIterator = subIterator.getPrev();
-						currentSubInstruction = subIterator.getInstruction();
-						if (currentSubInstruction instanceof StoreInstruction && checkingInstruction instanceof LoadInstruction) {
-							if (((StoreInstruction) currentSubInstruction).getIndex() == ((LoadInstruction) checkingInstruction).getIndex()) {
-								return true;
+						cSubInst = subIterator.getInstruction();
+						if (checkInstruction instanceof LoadInstruction && cSubInst instanceof StoreInstruction ) {
+							if (((StoreInstruction) cSubInst).getIndex() == ((LoadInstruction) checkInstruction).getIndex()) {
+								return (inloop=true);
 							}
 						} else {
-							if (subIterator.equals((InstructionHandle) ((BranchInstruction) handleIterator.getInstruction()).getTarget())) {
+							if (subIterator.equals(((BranchInstruction) handleIterator.getInstruction()).getTarget())) {
 								break;
 							}
 						}
@@ -643,6 +600,6 @@ public class ConstantFolder {
 			}
 		}
 
-		return false;
+		return inloop;
 	}
 }

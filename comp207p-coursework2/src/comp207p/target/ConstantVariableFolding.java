@@ -27,5 +27,4 @@ public class ConstantVariableFolding
         long z = x + y;
         return x > y;
     }
-
 }
